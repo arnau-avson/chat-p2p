@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chat P2P cifrado (WebRTC)</title>
+  <style>
+    body { font-family: sans-serif; max-width: 800px; margin: 20px auto; }
+    textarea { width: 100%; height: 120px; }
+    #chat { border: 1px solid #ccc; padding: 10px; height: 200px; overflow-y: auto; margin-bottom: 10px; }
+    input, button { margin: 5px 0; }
+  </style>
+</head>
+<body>
+  <h1>Chat P2P cifrado</h1>
+
+  <h3>1. Contraseña del chat</h3>
+  <input type="password" id="passwordInput" placeholder="Introduce contraseña" />
+  <button id="savePasswordBtn">Guardar en localStorage</button>
+  <p><small>La contraseña se usa para cifrar/descifrar mensajes localmente.</small></p>
+
+  <hr />
+
+  <h3>2. Señalización (copiar/pegar)</h3>
+  <button id="createOfferBtn">Crear OFFER (soy iniciador)</button>
+  <textarea id="offerOutput" placeholder="Offer generada aquí"></textarea>
+
+  <textarea id="offerInput" placeholder="Pega aquí la OFFER remota si eres el receptor"></textarea>
+  <button id="setRemoteOfferBtn">Usar OFFER remota (receptor)</button>
+
+  <textarea id="answerOutput" placeholder="Answer generada aquí (para enviar al iniciador)"></textarea>
+
+  <textarea id="answerInput" placeholder="Pega aquí la ANSWER remota si eres el iniciador"></textarea>
+  <button id="setRemoteAnswerBtn">Usar ANSWER remota (iniciador)</button>
+
+  <hr />
+
+  <h3>3. Chat</h3>
+  <div id="chat"></div>
+  <input type="text" id="messageInput" placeholder="Escribe mensaje" />
+  <button id="sendBtn">Enviar</button>
+
+  <script>
+    // ---------- Utilidades base64 ----------
+    function arrayBufferToBase64(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary = "";
+      for (let i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary);
+    }
+
+    function base64ToArrayBuffer(base64) {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes.buffer;
+    }
+
+    // ---------- Cifrado ----------
+    const SALT = new TextEncoder().encode("salt-fijo-demo");
+
+    async function getKeyFromPassword(password) {
+      const enc = new TextEncoder();
+      const passBytes = enc.encode(password);
+
+      const baseKey = await crypto.subtle.importKey(
+        "raw",
+        passBytes,
+        "PBKDF2",
+        false,
+        ["deriveKey"]
+      );
+
+      return crypto.subtle.deriveKey(
+        {
+          name: "PBKDF2",
+          salt: SALT,
+          iterations: 100000,
+          hash: "SHA-256",
+        },
+        baseKey,
+        { name: "AES-GCM", length: 256 },
+        false,
+        ["encrypt", "decrypt"]
+      );
+    }
+
+    async function encryptMessage(message, key) {
+      const enc = new TextEncoder();
+      const data = enc.encode(message);
+
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const ciphertext = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        key,
+        data
+      );
+
+      const combined = new Uint8Array(iv.byteLength + ciphertext.byteLength);
+      combined.set(iv, 0);
+      combined.set(new Uint8Array(ciphertext), iv.byteLength);
+
+      return arrayBufferToBase64(combined.buffer);
+    }
+
+    async function decryptMessage(base64Data, key) {
+      const buffer = base64ToArrayBuffer(base64Data);
+      const bytes = new Uint8Array(buffer);
+
+      const iv = bytes.slice(0, 12);
+      const ciphertext = bytes.slice(12);
+
+      const plaintext = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv },
+        key,
+        ciphertext
+      );
+
+      return new TextDecoder().decode(plaintext);
+    }
+
+    // ---------- WebRTC ----------
+    const config = {
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+    };
+
+    let pc = null;
+    let dataChannel = null;
+    let encryptionKey = null;
+
+    const chatDiv = document.getElementById("chat");
+
+    function addMessageToChat(text, from) {
+      const p = document.createElement("p");
+      p.textContent = from + ": " + text;
+      chatDiv.appendChild(p);
+      chatDiv.scrollTop = chatDiv.scrollHeight;
+    }
+
+    // Esperar a que termine la recogida de ICE y entonces devolver localDescription completa
+    function waitForIceGatheringComplete(pc) {
+      return new Promise((resolve) => {
+        if (pc.iceGatheringState === "complete") {
+          resolve();
+        } else {
+          function checkState() {
+            if (pc.iceGatheringState === "complete") {
+              pc.removeEventListener("icegatheringstatechange", checkState);
+              resolve();
+            }
+          }
+          pc.addEventListener("icegatheringstatechange", checkState);
+        }
+      });
+    }
+
+    function initPeerConnection(isInitiator) {
+      pc = new RTCPeerConnection(config);
+
+      if (isInitiator) {
+        dataChannel = pc.createDataChannel("chat");
+        setupDataChannel();
+      }
+
+      pc.ondatachannel = (event) => {
+        dataChannel = event.channel;
+        setupDataChannel();
+      };
+    }
+
+    function setupDataChannel() {
+      dataChannel.onopen = () => {
+        addMessageToChat("Canal P2P establecido", "Sistema");
+      };
+
+      dataChannel.onmessage = async (event) => {
+        try {
+          if (!encryptionKey) {
+            addMessageToChat("[ERROR] No hay clave de cifrado cargada", "Sistema");
+            return;
+          }
+          const decrypted = await decryptMessage(event.data, encryptionKey);
+          addMessageToChat(decrypted, "Ellos");
+        } catch (e) {
+          console.error(e);
+          addMessageToChat("[Mensaje recibido pero no se pudo descifrar]", "Sistema");
+        }
+      };
+    }
+
+    // ---------- Señalización ----------
+    const createOfferBtn = document.getElementById("createOfferBtn");
+    const offerOutput = document.getElementById("offerOutput");
+    const offerInput = document.getElementById("offerInput");
+    const setRemoteOfferBtn = document.getElementById("setRemoteOfferBtn");
+    const answerOutput = document.getElementById("answerOutput");
+    const answerInput = document.getElementById("answerInput");
+    const setRemoteAnswerBtn = document.getElementById("setRemoteAnswerBtn");
+
+    createOfferBtn.onclick = async () => {
+      initPeerConnection(true); // iniciador
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      // esperar a que se recojan todos los ICE candidates
+      await waitForIceGatheringComplete(pc);
+
+      // usar localDescription (ya trae los a=candidate)
+      offerOutput.value = JSON.stringify(pc.localDescription);
+    };
+
+    setRemoteOfferBtn.onclick = async () => {
+      const remoteOffer = JSON.parse(offerInput.value);
+      initPeerConnection(false); // receptor
+
+      await pc.setRemoteDescription(remoteOffer);
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+
+      await waitForIceGatheringComplete(pc);
+
+      answerOutput.value = JSON.stringify(pc.localDescription);
+    };
+
+    setRemoteAnswerBtn.onclick = async () => {
+      const remoteAnswer = JSON.parse(answerInput.value);
+      await pc.setRemoteDescription(remoteAnswer);
+    };
+
+    // ---------- Envío de mensajes ----------
+    document.getElementById("sendBtn").onclick = async () => {
+      const text = document.getElementById("messageInput").value;
+      if (!text) return;
+
+      if (!dataChannel || dataChannel.readyState !== "open") {
+        addMessageToChat("No hay canal P2P abierto todavía", "Sistema");
+        return;
+      }
+
+      if (!encryptionKey) {
+        addMessageToChat("No hay contraseña/clave cargada", "Sistema");
+        return;
+      }
+
+      const encrypted = await encryptMessage(text, encryptionKey);
+      dataChannel.send(encrypted);
+      addMessageToChat(text, "Tú");
+      document.getElementById("messageInput").value = "";
+    };
+
+    // ---------- Contraseña ----------
+    const passwordInput = document.getElementById("passwordInput");
+    const savePasswordBtn = document.getElementById("savePasswordBtn");
+
+    savePasswordBtn.onclick = async () => {
+      const pwd = passwordInput.value;
+      if (!pwd) return;
+      localStorage.setItem("chat-password", pwd);
+      encryptionKey = await getKeyFromPassword(pwd);
+      addMessageToChat("Contraseña cargada", "Sistema");
+    };
+
+    // Cargar automáticamente si ya hay una contraseña almacenada
+    const savedPass = localStorage.getItem("chat-password");
+    if (savedPass) {
+      passwordInput.value = savedPass;
+      getKeyFromPassword(savedPass).then(key => {
+        encryptionKey = key;
+        addMessageToChat("Contraseña cargada desde localStorage", "Sistema");
+      });
+    }
+  </script>
+</body>
+</html>
