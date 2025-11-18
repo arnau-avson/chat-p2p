@@ -11,33 +11,32 @@
   </style>
 </head>
 <body>
+
   <h1>Chat P2P cifrado</h1>
 
-  <h3>1. Contraseña del chat</h3>
-  <input type="password" id="passwordInput" placeholder="Introduce contraseña" />
-  <button id="savePasswordBtn">Guardar en localStorage</button>
-  <p><small>La contraseña se usa para cifrar/descifrar mensajes localmente.</small></p>
+  <div id="roleSelect">
+    <h3>¿Qué rol tienes?</h3>
+    <button id="btnEmisor">Emisor (iniciador)</button>
+    <button id="btnReceptor">Receptor</button>
+  </div>
 
-  <hr />
+  <div id="mainUI" style="display:none">
+    <h3>1. Contraseña del chat</h3>
+    <input type="password" id="passwordInput" placeholder="Introduce contraseña" />
+    <button id="savePasswordBtn">Guardar en localStorage</button>
+    <p><small>La contraseña se usa para cifrar/descifrar mensajes localmente.</small></p>
 
-  <h3>2. Señalización (copiar/pegar)</h3>
-  <button id="createOfferBtn">Crear OFFER (soy iniciador)</button>
-  <textarea id="offerOutput" placeholder="Offer generada aquí"></textarea>
+    <hr />
 
-  <textarea id="offerInput" placeholder="Pega aquí la OFFER remota si eres el receptor"></textarea>
-  <button id="setRemoteOfferBtn">Usar OFFER remota (receptor)</button>
+    <div id="signalingUI"></div>
 
-  <textarea id="answerOutput" placeholder="Answer generada aquí (para enviar al iniciador)"></textarea>
+    <hr />
 
-  <textarea id="answerInput" placeholder="Pega aquí la ANSWER remota si eres el iniciador"></textarea>
-  <button id="setRemoteAnswerBtn">Usar ANSWER remota (iniciador)</button>
-
-  <hr />
-
-  <h3>3. Chat</h3>
-  <div id="chat"></div>
-  <input type="text" id="messageInput" placeholder="Escribe mensaje" />
-  <button id="sendBtn">Enviar</button>
+    <h3>3. Chat</h3>
+    <div id="chat"></div>
+    <input type="text" id="messageInput" placeholder="Escribe mensaje" />
+    <button id="sendBtn">Enviar</button>
+  </div>
 
   <script>
     // ---------- Utilidades base64 ----------
@@ -191,44 +190,124 @@
       };
     }
 
-    // ---------- Señalización ----------
-    const createOfferBtn = document.getElementById("createOfferBtn");
-    const offerOutput = document.getElementById("offerOutput");
-    const offerInput = document.getElementById("offerInput");
-    const setRemoteOfferBtn = document.getElementById("setRemoteOfferBtn");
-    const answerOutput = document.getElementById("answerOutput");
-    const answerInput = document.getElementById("answerInput");
-    const setRemoteAnswerBtn = document.getElementById("setRemoteAnswerBtn");
+    // ---------- Señalización dinámica ----------
+    const roleSelectDiv = document.getElementById("roleSelect");
+    const mainUIDiv = document.getElementById("mainUI");
+    const signalingUI = document.getElementById("signalingUI");
+    let userRole = null; // 'emisor' o 'receptor'
 
-    createOfferBtn.onclick = async () => {
-      initPeerConnection(true); // iniciador
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-
-      // esperar a que se recojan todos los ICE candidates
-      await waitForIceGatheringComplete(pc);
-
-      // usar localDescription (ya trae los a=candidate)
-      offerOutput.value = JSON.stringify(pc.localDescription);
+    document.getElementById("btnEmisor").onclick = () => {
+      userRole = "emisor";
+      roleSelectDiv.style.display = "none";
+      mainUIDiv.style.display = "block";
+      renderSignalingUI();
+    };
+    document.getElementById("btnReceptor").onclick = () => {
+      userRole = "receptor";
+      roleSelectDiv.style.display = "none";
+      mainUIDiv.style.display = "block";
+      renderSignalingUI();
     };
 
-    setRemoteOfferBtn.onclick = async () => {
-      const remoteOffer = JSON.parse(offerInput.value);
-      initPeerConnection(false); // receptor
+    // Estado de señalización
+    let signalingStep = 0;
 
-      await pc.setRemoteDescription(remoteOffer);
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
+    function renderSignalingUI() {
+      signalingUI.innerHTML = "";
+      if (userRole === "emisor") {
+        if (signalingStep === 0) {
+          // Paso 1: crear OFFER
+          const btn = document.createElement("button");
+          btn.textContent = "Crear OFFER";
+          btn.onclick = async () => {
+            initPeerConnection(true);
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            await waitForIceGatheringComplete(pc);
+            signalingStep = 1;
+            renderSignalingUI();
+          };
+          signalingUI.appendChild(btn);
+        } else if (signalingStep === 1) {
+          // Mostrar OFFER para copiar
+          const ta = document.createElement("textarea");
+          ta.id = "offerOutput";
+          ta.placeholder = "Offer generada aquí";
+          ta.value = JSON.stringify(pc.localDescription);
+          ta.readOnly = true;
+          signalingUI.appendChild(document.createTextNode("Copia y envía esta OFFER al receptor:"));
+          signalingUI.appendChild(document.createElement("br"));
+          signalingUI.appendChild(ta);
+          signalingUI.appendChild(document.createElement("br"));
 
-      await waitForIceGatheringComplete(pc);
-
-      answerOutput.value = JSON.stringify(pc.localDescription);
-    };
-
-    setRemoteAnswerBtn.onclick = async () => {
-      const remoteAnswer = JSON.parse(answerInput.value);
-      await pc.setRemoteDescription(remoteAnswer);
-    };
+          // Paso siguiente: pegar ANSWER
+          const taAns = document.createElement("textarea");
+          taAns.id = "answerInput";
+          taAns.placeholder = "Pega aquí la ANSWER remota";
+          signalingUI.appendChild(document.createTextNode("Pega aquí la ANSWER remota cuando la recibas:"));
+          signalingUI.appendChild(document.createElement("br"));
+          signalingUI.appendChild(taAns);
+          signalingUI.appendChild(document.createElement("br"));
+          const btnSetAns = document.createElement("button");
+          btnSetAns.textContent = "Usar ANSWER remota";
+          btnSetAns.onclick = async () => {
+            try {
+              const remoteAnswer = JSON.parse(taAns.value);
+              await pc.setRemoteDescription(remoteAnswer);
+              signalingStep = 2;
+              renderSignalingUI();
+            } catch (e) {
+              alert("Formato de ANSWER inválido");
+            }
+          };
+          signalingUI.appendChild(btnSetAns);
+        } else {
+          signalingUI.appendChild(document.createTextNode("¡Canal P2P listo!"));
+        }
+      } else if (userRole === "receptor") {
+        if (signalingStep === 0) {
+          // Paso 1: pegar OFFER
+          const ta = document.createElement("textarea");
+          ta.id = "offerInput";
+          ta.placeholder = "Pega aquí la OFFER remota";
+          signalingUI.appendChild(document.createTextNode("Pega aquí la OFFER que te envía el emisor:"));
+          signalingUI.appendChild(document.createElement("br"));
+          signalingUI.appendChild(ta);
+          signalingUI.appendChild(document.createElement("br"));
+          const btnSetOffer = document.createElement("button");
+          btnSetOffer.textContent = "Usar OFFER remota";
+          btnSetOffer.onclick = async () => {
+            try {
+              const remoteOffer = JSON.parse(ta.value);
+              initPeerConnection(false);
+              await pc.setRemoteDescription(remoteOffer);
+              const answer = await pc.createAnswer();
+              await pc.setLocalDescription(answer);
+              await waitForIceGatheringComplete(pc);
+              signalingStep = 1;
+              renderSignalingUI();
+            } catch (e) {
+              alert("Formato de OFFER inválido");
+            }
+          };
+          signalingUI.appendChild(btnSetOffer);
+        } else if (signalingStep === 1) {
+          // Mostrar ANSWER para copiar
+          const ta = document.createElement("textarea");
+          ta.id = "answerOutput";
+          ta.placeholder = "Answer generada aquí";
+          ta.value = JSON.stringify(pc.localDescription);
+          ta.readOnly = true;
+          signalingUI.appendChild(document.createTextNode("Copia y envía esta ANSWER al emisor:"));
+          signalingUI.appendChild(document.createElement("br"));
+          signalingUI.appendChild(ta);
+          signalingUI.appendChild(document.createElement("br"));
+          signalingUI.appendChild(document.createTextNode("¡Canal P2P listo tras enviar la ANSWER!"));
+        } else {
+          signalingUI.appendChild(document.createTextNode("¡Canal P2P listo!"));
+        }
+      }
+    }
 
     // ---------- Envío de mensajes ----------
     document.getElementById("sendBtn").onclick = async () => {
