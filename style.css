@@ -1,0 +1,184 @@
+body {
+    font-family: 'Courier New', monospace;
+    max-width: 800px;
+    margin: 20px auto;
+    background-color: #0a0a0a;
+    color: #00ff00;
+    padding: 20px;
+    position: relative;
+    overflow-x: hidden;
+}
+
+
+@keyframes scanline {
+    0% {
+        background-position: 0 0;
+    }
+
+    100% {
+        background-position: 0 100%;
+    }
+}
+
+@keyframes blink {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0;
+    }
+}
+
+h1,
+h3 {
+    color: #00ff00;
+    margin-bottom: 15px;
+}
+
+h1 {
+    border-bottom: 1px solid #00ff00;
+    padding-bottom: 10px;
+    text-align: center;
+    font-size: 24px;
+    letter-spacing: 2px;
+}
+
+textarea,
+input,
+button {
+    font-family: 'Courier New', monospace;
+    background-color: #0a0a0a;
+    color: #00ff00;
+    border: 1px solid #00ff00;
+}
+
+textarea {
+    width: 100%;
+    height: 120px;
+    padding: 10px;
+    resize: vertical;
+}
+
+input {
+    width: 100%;
+    padding: 8px;
+    margin: 5px 0;
+    box-sizing: border-box;
+}
+
+input:focus,
+textarea:focus {
+    outline: none;
+}
+
+button {
+    padding: 8px 15px;
+    margin: 5px 0;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+    overflow: hidden;
+}
+
+button:hover {
+    background-color: #003300;
+}
+
+button:active {
+    background-color: #001a00;
+}
+
+
+#chat {
+    border: 1px solid #00ff00;
+    padding: 10px;
+    height: 200px;
+    overflow-y: auto;
+    margin-bottom: 10px;
+    background-color: rgba(0, 20, 0, 0.3);
+}
+
+.message {
+    margin-bottom: 8px;
+    padding: 5px;
+    border-left: 2px solid #00ff00;
+    padding-left: 10px;
+}
+
+.message.own {
+    border-left-color: #00cc00;
+    background-color: rgba(0, 40, 0, 0.2);
+}
+
+hr {
+    border: 0;
+    height: 1px;
+    background: #00ff00;
+    background-image: linear-gradient(to right, #0a0a0a, #00ff00, #0a0a0a);
+    margin: 20px 0;
+}
+
+small {
+    color: #008800;
+    font-size: 12px;
+}
+
+#roleSelect {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+#roleSelect button {
+    flex: 1;
+    min-width: 150px;
+}
+
+#messageInput::after {
+    content: '_';
+    animation: blink 1s infinite;
+}
+
+#chat::-webkit-scrollbar {
+    width: 8px;
+}
+
+#chat::-webkit-scrollbar-track {
+    background: rgba(0, 20, 0, 0.3);
+}
+
+#chat::-webkit-scrollbar-thumb {
+    background: #00aa00;
+    border-radius: 4px;
+}
+
+#chat::-webkit-scrollbar-thumb:hover {
+    background: #00ff00;
+}
+
+h1 {
+    position: relative;
+}
+
+h1::before,
+h1::after {
+    content: "Chat P2P cifrado";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+}
+
+h1::before {
+    left: 2px;
+    clip: rect(24px, 550px, 90px, 0);
+}
+
+h1::after {
+    left: -2px;
+    clip: rect(85px, 550px, 140px, 0);
+}
