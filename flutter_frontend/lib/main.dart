@@ -303,6 +303,7 @@ class _ChatScreenState extends State<ChatScreen> {
   late encrypt.IV iv;
 
   bool connected = false;
+  RTCPeerConnectionState? _lastState;
 
   @override
   void initState() {
@@ -328,6 +329,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     pc!.onConnectionState = (state) {
       setState(() {
+        _lastState = state;
         connected =
             state == RTCPeerConnectionState.RTCPeerConnectionStateConnected;
       });
@@ -510,7 +512,15 @@ class _ChatScreenState extends State<ChatScreen> {
             "Sigue estos pasos con la otra persona. Cuando la conexión se establezca, se abrirá el chat cifrado.",
             style: subtitleStyle,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
+          if (_lastState != null) ...[
+            Text(
+              "Estado conexión: ${_lastState.toString().split('.').last}",
+              style: TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+          ],
+          const SizedBox(height: 8),
 
           // CARD PRINCIPAL DE SEÑALIZACIÓN
           _buildGlassCard(
