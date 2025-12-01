@@ -1,4 +1,15 @@
-name: flutter_frontend
+flutter_icons:
+  android: true
+  ios: true
+  image_path: assets/logo.png
+
+flutter_native_splash:
+  color: "#141E30"
+  image: assets/logo.png
+  android: true
+  ios: true
+  web: false
+name: p2p
 description: "A new Flutter project."
 publish_to: 'none'
 
@@ -13,6 +24,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   encrypt: ^5.0.3
   flutter_webrtc: 1.2.1
+  flutter_native_splash: ^2.4.7
+  flutter_launcher_icons: ^0.14.4
 
 dev_dependencies:
   flutter_test:
@@ -22,3 +35,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/logo.png

@@ -17,7 +17,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Chat P2P Cifrado',
+      title: 'p2p',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo),
@@ -83,6 +83,7 @@ class _PasswordScreenState extends State<PasswordScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    const SizedBox(height: 16),
                     const Icon(
                       Icons.lock_outline,
                       size: 40,
